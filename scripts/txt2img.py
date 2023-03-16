@@ -1,6 +1,7 @@
 import argparse, os, sys, glob
 import cv2
 import torch
+# import oneflow as torch
 import numpy as np
 from omegaconf import OmegaConf
 from PIL import Image
@@ -11,7 +12,8 @@ from einops import rearrange
 from torchvision.utils import make_grid
 import time
 from pytorch_lightning import seed_everything
-from torch import autocast
+# from torch import autocast
+from oneflow import autocast
 from contextlib import contextmanager, nullcontext
 
 from ldm.util import instantiate_from_config
@@ -24,9 +26,9 @@ from transformers import AutoFeatureExtractor
 
 
 # load safety model
-safety_model_id = "CompVis/stable-diffusion-safety-checker"
-safety_feature_extractor = AutoFeatureExtractor.from_pretrained(safety_model_id)
-safety_checker = StableDiffusionSafetyChecker.from_pretrained(safety_model_id)
+# safety_model_id = "CompVis/stable-diffusion-safety-checker"
+# safety_feature_extractor = AutoFeatureExtractor.from_pretrained(safety_model_id)
+# safety_checker = StableDiffusionSafetyChecker.from_pretrained(safety_model_id)
 
 
 def chunk(it, size):
@@ -52,6 +54,8 @@ def load_model_from_config(config, ckpt, verbose=False):
     if "global_step" in pl_sd:
         print(f"Global Step: {pl_sd['global_step']}")
     sd = pl_sd["state_dict"]
+    print("####################################")
+    print(config.model)
     model = instantiate_from_config(config.model)
     m, u = model.load_state_dict(sd, strict=False)
     if len(m) > 0 and verbose:
@@ -63,6 +67,8 @@ def load_model_from_config(config, ckpt, verbose=False):
 
     model.cuda()
     model.eval()
+    from ldm.modules.diffusionmodules.openaimodel_oneflow import unet
+    model.model.diffusion_model.oneflow_unet = unet
     return model
 
 
@@ -285,6 +291,7 @@ def main():
     if opt.fixed_code:
         start_code = torch.randn([opt.n_samples, opt.C, opt.H // opt.f, opt.W // opt.f], device=device)
 
+    # 转精度
     precision_scope = autocast if opt.precision=="autocast" else nullcontext
     with torch.no_grad():
         with precision_scope("cuda"):
@@ -314,9 +321,11 @@ def main():
                         x_samples_ddim = torch.clamp((x_samples_ddim + 1.0) / 2.0, min=0.0, max=1.0)
                         x_samples_ddim = x_samples_ddim.cpu().permute(0, 2, 3, 1).numpy()
 
-                        x_checked_image, has_nsfw_concept = check_safety(x_samples_ddim)
+                        # x_checked_image, has_nsfw_concept = check_safety(x_samples_ddim)
 
-                        x_checked_image_torch = torch.from_numpy(x_checked_image).permute(0, 3, 1, 2)
+                        # x_checked_image_torch = torch.from_numpy(x_checked_image).permute(0, 3, 1, 2)
+
+                        x_checked_image_torch = torch.from_numpy(x_samples_ddim).permute(0, 3, 1, 2)
 
                         if not opt.skip_save:
                             for x_sample in x_checked_image_torch:
@@ -349,4 +358,20 @@ def main():
 
 
 if __name__ == "__main__":
+    os.environ["ONEFLOW_MLIR_CSE"] = "1"
+    os.environ["ONEFLOW_MLIR_ENABLE_INFERENCE_OPTIMIZATION"] = "1"
+    os.environ["ONEFLOW_MLIR_ENABLE_ROUND_TRIP"] = "1"
+    os.environ["ONEFLOW_MLIR_FUSE_FORWARD_OPS"] = "1"
+    os.environ["ONEFLOW_MLIR_GROUP_MATMUL"] = "1"
+    os.environ["ONEFLOW_MLIR_PREFER_NHWC"] = "1"
+
+    os.environ["ONEFLOW_KERNEL_ENABLE_FUSED_CONV_BIAS"] = "1"
+    os.environ["ONEFLOW_KERNEL_ENABLE_FUSED_LINEAR"] = "1"
+
+    os.environ["ONEFLOW_KERNEL_CONV_CUTLASS_IMPL_ENABLE_TUNING_WARMUP"] = "1"
+    os.environ["ONEFLOW_KERNEL_CONV_ENABLE_CUTLASS_IMPL"] = "1"
+
+    os.environ["ONEFLOW_CONV_ALLOW_HALF_PRECISION_ACCUMULATION"] = "1"
+    os.environ["ONEFLOW_MATMUL_ALLOW_HALF_PRECISION_ACCUMULATION"] = "1"
+    
     main()

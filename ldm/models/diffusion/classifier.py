@@ -25,6 +25,17 @@ def disabled_train(self, mode=True):
     return self
 
 
+class UNetGraph(flow.nn.Graph):
+    def __init__(self, unet):
+        super().__init__()
+        self.unet = unet
+        self.config.enable_cudnn_conv_heuristic_search_algo(False)
+        self.config.allow_fuse_add_to_output(True)
+
+    def build(self, x, timesteps=None, context=None):
+        return self.unet(x, timesteps, context)
+
+
 class NoisyLatentImageClassifier(pl.LightningModule):
 
     def __init__(self,
@@ -100,6 +111,9 @@ class NoisyLatentImageClassifier(pl.LightningModule):
             model_config.pool = pool
 
         self.model = __models__[self.label_key](**model_config)
+        # if isinstance(self.model, UNetModel):
+        #     self.model = UNetGraph(self.model) 
+
         if ckpt_path is not None:
             print('#####################################################################')
             print(f'load from ckpt "{ckpt_path}"')

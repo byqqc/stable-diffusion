@@ -1,4 +1,6 @@
 import oneflow as flow
+import oneflow.mock_torch as mock
+mock.enable()
 
 from abc import abstractmethod
 from functools import partial
@@ -10,7 +12,7 @@ import torch as th
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ldm.modules.diffusionmodules.util import (
+from ldm.modules.util_oneflow import (
     checkpoint,
     conv_nd,
     linear,
@@ -19,7 +21,7 @@ from ldm.modules.diffusionmodules.util import (
     normalization,
     timestep_embedding,
 )
-from ldm.modules.attention import SpatialTransformer
+from ldm.modules.attention_oneflow import SpatialTransformer
 
 
 # dummy replace
@@ -505,24 +507,6 @@ class UNetModel(nn.Module):
         self.num_heads_upsample = num_heads_upsample
         self.predict_codebook_ids = n_embed is not None
 
-        # print("############### UNetModel ###############")
-        # print("self.image_size: {}".format(self.image_size))
-        # print("self.in_channels: {}".format(self.in_channels))
-        # print("self.model_channels: {}".format(self.model_channels))
-        # print("self.out_channels: {}".format(self.out_channels))
-        # print("self.num_res_blocks: {}".format(self.num_res_blocks))
-        # print("self.attention_resolutions: {}".format(self.attention_resolutions))
-        # print("self.dropout: {}".format(self.dropout))
-        # print("self.channel_mult: {}".format(self.channel_mult))
-        # print("self.conv_resample: {}".format(self.conv_resample))
-        # print("self.num_classes: {}".format(self.num_classes))
-        # print("self.use_checkpoint: {}".format(self.use_checkpoint))
-        # print("self.dtype: {}".format(self.dtype))
-        # print("self.num_heads: {}".format(self.num_heads))
-        # print("self.num_head_channels: {}".format(self.num_head_channels))
-        # print("self.num_heads_upsample: {}".format(self.num_heads_upsample))
-        # print("self.predict_codebook_ids: {}".format(self.predict_codebook_ids))
-
         time_embed_dim = model_channels * 4
         self.time_embed = nn.Sequential(
             linear(model_channels, time_embed_dim),
@@ -726,72 +710,72 @@ class UNetModel(nn.Module):
         self.input_blocks.apply(convert_module_to_f32)
         self.middle_block.apply(convert_module_to_f32)
         self.output_blocks.apply(convert_module_to_f32)
-    
+
     def forward(self, x, timesteps=None, context=None, y=None,**kwargs):
-        x = flow.utils.tensor.from_torch(x)
-        timesteps = flow.utils.tensor.from_torch(timesteps)
-        context = flow.utils.tensor.from_torch(context)
-        out = self.oneflow_unet(x, timesteps=timesteps, context=context, y=y, **kwargs)
-        out = flow.utils.tensor.to_torch(out)
-        return out
-
-    # def forward(self, x, timesteps=None, context=None, y=None,**kwargs):
-    #     """
-    #     Apply the model to an input batch.
-    #     :param x: an [N x C x ...] Tensor of inputs.
-    #     :param timesteps: a 1-D batch of timesteps.
-    #     :param context: conditioning plugged in via crossattn
-    #     :param y: an [N] Tensor of labels, if class-conditional.
-    #     :return: an [N x C x ...] Tensor of outputs.
-    #     """        
-    #     print("############### x ###############")
-    #     print(x)
-    #     print("############### timesteps ###############")
-    #     print(timesteps)
-
-    #     assert (y is not None) == (
-    #         self.num_classes is not None
-    #     ), "must specify y if and only if the model is class-conditional"
-    #     hs = []
-    #     t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
-    #     print("############### t_emb ###############")
-    #     print(t_emb)
-    #     # import pdb; pdb.set_trace()
-    #     emb = self.time_embed(t_emb)
-    #     print("############### emb after time_embed ###############")
-    #     print(emb)
-
-    #     if self.num_classes is not None:
-    #         assert y.shape == (x.shape[0],)
-    #         emb = emb + self.label_emb(y)
-    #     print("############### emb after label_emb ###############")
-    #     print(emb)
-
-    #     h = x.type(self.dtype)
-    #     for module in self.input_blocks:
-    #         h = module(h, emb, context)
-    #         hs.append(h)
-    #     print("############### h after input block ###############")
-    #     print(h)
-    #     h = self.middle_block(h, emb, context)
-    #     print("############### h after middle block ###############")
-    #     print(h)
-    #     for module in self.output_blocks:
-    #         h = th.cat([h, hs.pop()], dim=1)
-    #         h = module(h, emb, context)
-    #     h = h.type(x.dtype)
-    #     print("############### h after output block ###############")
-    #     print(h)
-
-    #     if self.predict_codebook_ids:
-    #         out = self.id_predictor(h)
-    #     else:
-    #         out = self.out(h)
-
-    #     print("############### out ###############")
-    #     print(out)
+        """
+        Apply the model to an input batch.
+        :param x: an [N x C x ...] Tensor of inputs.
+        :param timesteps: a 1-D batch of timesteps.
+        :param context: conditioning plugged in via crossattn
+        :param y: an [N] Tensor of labels, if class-conditional.
+        :return: an [N x C x ...] Tensor of outputs.
+        """
         
-    #     return out
+        print("############### x ###############")
+        print(x)
+        print("############### timesteps ###############")
+        print(timesteps)
+
+        mock.enable()
+        assert (y is not None) == (
+            self.num_classes is not None
+        ), "must specify y if and only if the model is class-conditional"
+        hs = []
+        t_emb = timestep_embedding(timesteps, self.model_channels, repeat_only=False)
+        print("############### t_emb ###############")
+        print(t_emb)
+        emb = self.time_embed(t_emb)
+        print("############### emb after time_embed ###############")
+        print(emb)
+
+        if self.num_classes is not None:
+            assert y.shape == (x.shape[0],)
+            emb = emb + self.label_emb(y)
+        print("############### emb after label_emb ###############")
+        print(emb)
+
+        h = x.type(self.dtype)
+        for module in self.input_blocks:
+            h = module(h, emb, context)
+            hs.append(h)
+        print("############### h after input block ###############")
+        print(h)
+        h = self.middle_block(h, emb, context)
+        print("############### h after middle block ###############")
+        print(h)
+        for module in self.output_blocks:
+            h = th.cat([h, hs.pop()], dim=1)
+            h = module(h, emb, context)
+        h = h.type(x.dtype)
+        print("############### h after output block ###############")
+        print(h)
+
+        # mock.disable()
+        # h = flow.utils.tensor.to_torch(h)
+        # if self.predict_codebook_ids:
+        #     return self.id_predictor(h)
+        # else:
+        #     return self.out(h)
+        if self.predict_codebook_ids:
+            out = self.id_predictor(h)
+        else:
+            out = self.out(h)
+        mock.disable()
+
+        print("############### out ###############")
+        print(out)
+
+        return out
 
 
 class EncoderUNetModel(nn.Module):
@@ -1010,3 +994,21 @@ class EncoderUNetModel(nn.Module):
         else:
             h = h.type(x.dtype)
             return self.out(h)
+
+class UNetGraph(flow.nn.Graph):
+    def __init__(self, unet):
+        super().__init__()
+        self.unet = unet
+        self.config.enable_cudnn_conv_heuristic_search_algo(False)
+        self.config.allow_fuse_add_to_output(True)
+
+    def build(self, x, timesteps, context, y, **kwargs):  
+        return self.unet(
+            x, timesteps=timesteps, context=context, y=y, **kwargs
+        )
+
+unet = UNetModel(image_size=32, in_channels=4, out_channels=4, model_channels=320, attention_resolutions=[4,2,1], num_res_blocks=2, channel_mult=[1,2,4,4], num_heads=8, use_spatial_transformer=True, transformer_depth=1, context_dim=768, use_checkpoint=True, legacy=False)
+unet.cuda()
+unet.eval()
+# unet = UNetGraph(unet)
+mock.disable()
